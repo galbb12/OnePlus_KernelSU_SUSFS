@@ -872,6 +872,8 @@ runs:
           echo "SUSFS_COMMIT_SHA=$SUSFS_BRANCH" >> $GITHUB_ENV
           # pershoot's 6.12 fixes on top of simonpunk's base (pinned by hash; the same combo as the local WildKernels build)
           git -C susfs4ksu fetch -q https://gitlab.com/pershoot/susfs4ksu.git gki-android14-6.1-dev 2>/dev/null || echo "::warning::pershoot susfs fetch failed; continuing without pershoot fixes"
+          git -C susfs4ksu config user.name "wild-kernels-ci"
+          git -C susfs4ksu config user.email "wild-kernels-ci@users.noreply.github.com"
           for c in 88df19e864e90f738610b455706931476641b8d9 6d4f9a92ac7946d9d2d1904149d764506c9ae7b9; do
             if git -C susfs4ksu cherry-pick -n "$c" >/dev/null 2>&1; then
               git -C susfs4ksu commit -q -m "susfs: pershoot fix (cherry-picked)"
