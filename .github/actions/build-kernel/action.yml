@@ -1131,9 +1131,17 @@ runs:
           "v2.3.0")
             if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
               # pershoot's dev-susfs ships the SUSFS integration pre-merged (Kbuild version
-              # detection, hooks, Kconfig): no enablement patch needed; SUSFS kernel code
-              # and configs were handled above
-              echo "SUSFS v2.3.0: pre-integrated KSU tree (pershoot dev-susfs) - skipping enablement patch"
+              # detection, hooks, Kconfig). But the branch tip can be a pre-integration sync
+              # state (e.g. mid-rebuild) - verify the checked-out tree actually contains the
+              # integration before skipping the enablement patch, otherwise we silently
+              # build and ship a kernel labeled SUSFS with no SUSFS inside.
+              cd "$KSUN_FOLDER"
+              if grep -q "^config KSU_SUSFS" kernel/Kconfig 2>/dev/null && grep -qi "susfs" kernel/Kbuild 2>/dev/null; then
+                echo "SUSFS v2.3.0: pre-integrated KSU tree (pershoot dev-susfs @ $(git rev-parse --short HEAD 2>/dev/null)) - skipping enablement patch"
+              else
+                echo "::error::KSU-Next tree ($(git rev-parse --short HEAD 2>/dev/null || echo unknown)) does not contain the SUSFS v2.3.0 integration (no KSU_SUSFS in Kconfig/Kbuild). The dev-susfs tip is not pre-integrated yet - re-run after the maintainer updates it, or pass a pre-integrated commit hash."
+                exit 1
+              fi
             else
               echo "::error::SUSFS v2.3.0 is not supported with the stock KernelSU in this fork; select KSUN (pershoot dev-susfs)"
               exit 1
@@ -2092,6 +2100,19 @@ runs:
           tail -n 100 build.log || echo "Build log not available"
           echo "::endgroup::"
           exit 1
+        fi
+        
+        # Tripwire: this fork always ships SUSFS (the kernel SUSFS sources are copied into the
+        # tree before the build). If the built kernel lacks SUSFS, the integration never made it
+        # in (e.g. the KSU tree was in a pre-integration state, or a Kconfig dependency silently
+        # dropped CONFIG_KSU_SUSFS). A SUSFS-labeled artifact without SUSFS inside is worse than
+        # a failure - stop the build.
+        if [ -f "$COMMON_KERNEL_FOLDER/include/linux/susfs.h" ]; then
+          if [ ! -f "$OUT/fs/susfs.o" ] || ! nm "$OUT/vmlinux" 2>/dev/null | grep -q "susfs_init"; then
+            echo "::error::SUSFS sources are in the tree, but fs/susfs.o is missing or susfs_init is not in vmlinux (CONFIG_KSU_SUSFS=$(grep '^CONFIG_KSU_SUSFS' "$OUT/.config" 2>/dev/null || echo unset)) - refusing to ship a SUSFS-labeled kernel"
+            exit 1
+          fi
+          echo "✅ SUSFS verified in built kernel (fs/susfs.o present, susfs_init in vmlinux)"
         fi
         
         IMG_SIZE=$(stat -c%s "$IMG")
