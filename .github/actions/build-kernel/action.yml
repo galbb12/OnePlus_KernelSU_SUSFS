@@ -870,6 +870,17 @@ runs:
             fi
           fi
           echo "SUSFS_COMMIT_SHA=$SUSFS_BRANCH" >> $GITHUB_ENV
+          # pershoot's 6.12 fixes on top of simonpunk's base (pinned by hash; the same combo as the local WildKernels build)
+          git -C susfs4ksu fetch -q https://gitlab.com/pershoot/susfs4ksu.git gki-android14-6.1-dev 2>/dev/null || echo "::warning::pershoot susfs fetch failed; continuing without pershoot fixes"
+          for c in 88df19e864e90f738610b455706931476641b8d9 6d4f9a92ac7946d9d2d1904149d764506c9ae7b9; do
+            if git -C susfs4ksu cherry-pick -n "$c" >/dev/null 2>&1; then
+              git -C susfs4ksu commit -q -m "susfs: pershoot fix (cherry-picked)"
+              echo "✅ pershoot fix applied: $c"
+            else
+              git -C susfs4ksu cherry-pick --abort >/dev/null 2>&1 || true
+              echo "::warning::pershoot fix $c not applicable; continuing"
+            fi
+          done
         fi
         echo "✅ Dependencies cloned"
         echo "::endgroup::"
@@ -894,10 +905,10 @@ runs:
         echo "Adding KernelSU Next..."
         KSU_INPUT="${{ inputs.ksu_branch_or_hash }}"
         if [ -z "$KSU_INPUT" ]; then
-          curl --fail --location --proto '=https' -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
-        else
-          curl --fail --location --proto '=https' -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s "$KSU_INPUT"
+          KSU_INPUT="d575262c1b40180a0f915544f42d8c4ab34b874b"
         fi
+        # pershoot's dev-susfs: KernelSU-Next with the SUSFS integration pre-merged by the maintainer
+        curl --fail --location --proto '=https' -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/dev-susfs/kernel/setup.sh" | bash -s "$KSU_INPUT"
         git submodule update --init --recursive
         cd KernelSU-Next/kernel
         
@@ -1113,6 +1124,17 @@ runs:
             else
               cd "$KSU_FOLDER"
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
+            fi
+            ;;
+          "v2.3.0")
+            if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
+              # pershoot's dev-susfs ships the SUSFS integration pre-merged (Kbuild version
+              # detection, hooks, Kconfig): no enablement patch needed; SUSFS kernel code
+              # and configs were handled above
+              echo "SUSFS v2.3.0: pre-integrated KSU tree (pershoot dev-susfs) - skipping enablement patch"
+            else
+              echo "::error::SUSFS v2.3.0 is not supported with the stock KernelSU in this fork; select KSUN (pershoot dev-susfs)"
+              exit 1
             fi
             ;;
           *)
