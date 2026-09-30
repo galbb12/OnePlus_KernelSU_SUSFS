@@ -27,6 +27,11 @@ inputs:
     required: false
     type: string
     default: ''
+  kernel_name:
+    description: 'Override the kernel name used in uname (e.g. "OP-WILD"). Leave empty to use the device config value.'
+    required: false
+    type: string
+    default: ''
   optimize_level:
     description: 'Compiler optimization level (O2 or O3)'
     required: false
@@ -111,6 +116,12 @@ runs:
         set -euo pipefail
         echo '${{ inputs.op_config_json }}' > /tmp/config.json
         jq -r 'to_entries[] | "OP_\(.key | ascii_upcase)=\(.value)"' /tmp/config.json >> "$GITHUB_ENV"
+        if [ -n "${{ inputs.kernel_name }}" ]; then
+          ORIG_UNAME=$(jq -r '.uname // "none"' /tmp/config.json)
+          jq --arg n "${{ inputs.kernel_name }}" '.uname = $n' /tmp/config.json > /tmp/config.tmp && mv /tmp/config.tmp /tmp/config.json
+          echo "OP_UNAME=${{ inputs.kernel_name }}" >> "$GITHUB_ENV"
+          echo "Using custom kernel name: ${{ inputs.kernel_name }} (device config default: $ORIG_UNAME)"
+        fi
         echo "Parsed config:"
         jq '.' /tmp/config.json
 
